@@ -1,0 +1,13 @@
+# Node.js
+node_modules/
+
+# 環境変数ファイル（絶対に公開しない）
+.env
+backend/.env
+
+# Python
+.venv/
+__pycache__/
+
+# OS
+.DS_Store

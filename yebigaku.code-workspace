@@ -1,0 +1,32 @@
+{
+  "folders": [
+    { "path": "backend" },
+    { "path": "frontend" }
+  ],
+  "settings": {
+    // --- 共通設定 ---
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    },
+    
+    // --- Python (Backend) 設定 ---
+    "[python]": {
+      "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "python.defaultInterpreterPath": "${workspaceFolder:backend}/.venv/Scripts/python.exe",
+    "python.analysis.typeCheckingMode": "basic",
+    
+    // ★ 今回追加した設定（ターミナルで .env を自動読み込みする）
+    "python.terminal.useEnvFile": true,
+    "python.envFile": "${workspaceFolder:backend}/.env",
+    
+    // --- TypeScript/React (Frontend) 設定 ---
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    }
+  }
+}
