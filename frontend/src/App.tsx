@@ -23,20 +23,36 @@ const parseList = (jsonString?: string): string[] => {
   }
 }
 
+// ★追加: 音声ファイルのパスをローカル用に変換するお助け関数
+// 例: "static/audio/law_日本国憲法_21.mp3" -> "/audio/law_日本国憲法_21.mp3"
+const getLocalAudioPath = (originalPath?: string) => {
+  if (!originalPath) return undefined;
+  const filename = originalPath.split('/').pop();
+  return `/audio/${filename}`;
+}
+
 function App() {
   const [articles, setArticles] = useState<LawArticle[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // 最後にスラッシュをつけた正しいURL
-    fetch('http://localhost:8000/api/laws/') 
-      .then(res => res.json())
+    // ★変更: APIサーバーではなく、publicフォルダ内の laws.json を直接読み込む
+    fetch('/laws.json') 
+      .then(res => {
+        if (!res.ok) throw new Error("laws.json の読み込みに失敗しました");
+        return res.json();
+      })
       .then(data => {
+        if (!Array.isArray(data)) {
+           throw new Error("データ形式が正しくありません。配列である必要があります。");
+        }
         setArticles(data)
         setLoading(false)
       })
       .catch(err => {
         console.error("データの取得に失敗しました", err)
+        setError(err.message)
         setLoading(false)
       })
   }, [])
@@ -49,12 +65,20 @@ function App() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-slate-50 text-red-500">
+        <p className="font-bold text-lg">エラー: {error}</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
       {/* ヘッダー */}
       <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center px-6">
         <h1 className="text-xl font-bold tracking-wider">耳学 (Yebigaku)</h1>
-        <span className="text-xs bg-blue-800 py-1 px-2 rounded-full">PWA Ready</span>
+        <span className="text-xs bg-blue-800 py-1 px-2 rounded-full">Offline Ready</span>
       </header>
 
       {/* メインコンテンツ */}
@@ -140,8 +164,9 @@ function App() {
                   {article.audio_file_path && (
                     <div className="mt-6 pt-5 border-t border-slate-100">
                       <h3 className="font-bold text-slate-600 text-sm mb-3">🎧 音声解説を聴く</h3>
+                      {/* ★変更: srcをローカルの変換関数に通す */}
                       <audio controls className="w-full h-12 outline-none rounded-full bg-slate-50">
-                        <source src={`http://localhost:8000/${article.audio_file_path}`} type="audio/mpeg" />
+                        <source src={getLocalAudioPath(article.audio_file_path)} type="audio/mpeg" />
                         お使いのブラウザは音声再生に対応していません。
                       </audio>
                     </div>
