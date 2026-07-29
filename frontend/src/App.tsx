@@ -33,18 +33,15 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // ★追加: 再生中の条文IDと、アプリ全体で1つだけ使うAudioオブジェクト
   const [playingId, setPlayingId] = useState<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // アプリ起動時に1回だけAudioオブジェクトを生成し、イベントを設定
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio()
     }
     const audio = audioRef.current
 
-    // 音声が終わったり、一時停止した時に状態を更新
     const onEnded = () => setPlayingId(null)
     const onPause = () => setPlayingId(null)
     const onPlay = () => {}
@@ -53,13 +50,9 @@ function App() {
     audio.addEventListener('pause', onPause)
     audio.addEventListener('play', onPlay)
 
-    // ★追加: ロック画面からの「再生/一時停止」操作を受け付ける Media Session API
     if ('mediaSession' in navigator) {
       navigator.mediaSession.setActionHandler('play', () => {
-        audio.play().then(() => {
-          // 再生が成功したらUIも「再生中」にする
-          // (どのIDが再生中かは togglePlay でセットされている前提)
-        }).catch(e => console.error(e))
+        audio.play().catch(e => console.error(e))
       })
       navigator.mediaSession.setActionHandler('pause', () => {
         audio.pause()
@@ -73,7 +66,20 @@ function App() {
     }
   }, [])
 
-  // 再生・一時停止の切り替え処理
+  // ★修正: Linterの警告に従い、ロック画面の表示更新を useEffect に分離しました
+  useEffect(() => {
+    if (playingId !== null && 'mediaSession' in navigator) {
+      const currentArticle = articles.find(a => a.id === playingId)
+      if (currentArticle) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: `${currentArticle.law_name} 第${currentArticle.article_number}条`,
+          artist: '耳学 (Yebigaku)',
+          album: '法律音声学習',
+        })
+      }
+    }
+  }, [playingId, articles])
+
   const togglePlay = (article: LawArticle) => {
     const audio = audioRef.current
     if (!audio) return
@@ -81,26 +87,14 @@ function App() {
     const path = getLocalAudioPath(article.audio_file_path)
     if (!path) return
 
-    // すでに同じ条文が再生中なら一時停止する
     if (playingId === article.id) {
       audio.pause()
       setPlayingId(null)
       return
     }
 
-    // 違う条文、または停止中から新しく再生する場合
-    // (URLが変わる場合のみsrcを入れ替える)
     if (!audio.src.endsWith(path)) {
       audio.src = path
-      
-      // ★追加: ロック画面に表示されるタイトル（条文名）をセット
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: `${article.law_name} 第${article.article_number}条`,
-          artist: '耳学 (Yebigaku)',
-          album: '法律音声学習',
-        })
-      }
     }
 
     audio.play().then(() => {
@@ -110,7 +104,6 @@ function App() {
     })
   }
 
-  // データの読み込み
   useEffect(() => {
     fetch('/laws.json') 
       .then(res => {
@@ -224,7 +217,6 @@ function App() {
                     </div>
                   )}
 
-                  {/* ★変更: 共通の再生ボタンに切り替え */}
                   {article.audio_file_path && (
                     <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between">
                       <h3 className="font-bold text-slate-600 text-sm">🎧 音声解説を聴く</h3>
