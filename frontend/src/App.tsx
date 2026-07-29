@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 interface LawArticle {
   id: number
@@ -12,7 +12,6 @@ interface LawArticle {
   audio_file_path?: string
 }
 
-// JSON文字列を安全に配列に変換するお助け関数
 const parseList = (jsonString?: string): string[] => {
   if (!jsonString) return []
   try {
@@ -23,8 +22,6 @@ const parseList = (jsonString?: string): string[] => {
   }
 }
 
-// ★追加: 音声ファイルのパスをローカル用に変換するお助け関数
-// 例: "static/audio/law_日本国憲法_21.mp3" -> "/audio/law_日本国憲法_21.mp3"
 const getLocalAudioPath = (originalPath?: string) => {
   if (!originalPath) return undefined;
   const filename = originalPath.split('/').pop();
@@ -35,9 +32,86 @@ function App() {
   const [articles, setArticles] = useState<LawArticle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // ★追加: 再生中の条文IDと、アプリ全体で1つだけ使うAudioオブジェクト
+  const [playingId, setPlayingId] = useState<number | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
+  // アプリ起動時に1回だけAudioオブジェクトを生成し、イベントを設定
   useEffect(() => {
-    // ★変更: APIサーバーではなく、publicフォルダ内の laws.json を直接読み込む
+    if (!audioRef.current) {
+      audioRef.current = new Audio()
+    }
+    const audio = audioRef.current
+
+    // 音声が終わったり、一時停止した時に状態を更新
+    const onEnded = () => setPlayingId(null)
+    const onPause = () => setPlayingId(null)
+    const onPlay = () => {}
+
+    audio.addEventListener('ended', onEnded)
+    audio.addEventListener('pause', onPause)
+    audio.addEventListener('play', onPlay)
+
+    // ★追加: ロック画面からの「再生/一時停止」操作を受け付ける Media Session API
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => {
+        audio.play().then(() => {
+          // 再生が成功したらUIも「再生中」にする
+          // (どのIDが再生中かは togglePlay でセットされている前提)
+        }).catch(e => console.error(e))
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        audio.pause()
+      })
+    }
+
+    return () => {
+      audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('play', onPlay)
+    }
+  }, [])
+
+  // 再生・一時停止の切り替え処理
+  const togglePlay = (article: LawArticle) => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const path = getLocalAudioPath(article.audio_file_path)
+    if (!path) return
+
+    // すでに同じ条文が再生中なら一時停止する
+    if (playingId === article.id) {
+      audio.pause()
+      setPlayingId(null)
+      return
+    }
+
+    // 違う条文、または停止中から新しく再生する場合
+    // (URLが変わる場合のみsrcを入れ替える)
+    if (!audio.src.endsWith(path)) {
+      audio.src = path
+      
+      // ★追加: ロック画面に表示されるタイトル（条文名）をセット
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: `${article.law_name} 第${article.article_number}条`,
+          artist: '耳学 (Yebigaku)',
+          album: '法律音声学習',
+        })
+      }
+    }
+
+    audio.play().then(() => {
+      setPlayingId(article.id)
+    }).catch(err => {
+      console.error("音声の再生に失敗しました:", err)
+    })
+  }
+
+  // データの読み込み
+  useEffect(() => {
     fetch('/laws.json') 
       .then(res => {
         if (!res.ok) throw new Error("laws.json の読み込みに失敗しました");
@@ -75,13 +149,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
-      {/* ヘッダー */}
       <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center px-6">
         <h1 className="text-xl font-bold tracking-wider">耳学 (Yebigaku)</h1>
         <span className="text-xs bg-blue-800 py-1 px-2 rounded-full">Offline Ready</span>
       </header>
 
-      {/* メインコンテンツ */}
       <main className="p-4 max-w-3xl mx-auto space-y-8 mt-6">
         {articles.length === 0 ? (
           <p className="text-center text-slate-500 bg-white p-8 rounded-2xl shadow-sm">
@@ -89,14 +161,12 @@ function App() {
           </p>
         ) : (
           articles.map((article) => {
-            // 文字列データを配列に変換
             const requirements = parseList(article.requirements)
             const effects = parseList(article.effects)
             const mainIssues = parseList(article.main_issues)
 
             return (
               <article key={article.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                {/* カードヘッダー */}
                 <div className="bg-slate-50 p-5 border-b border-slate-200">
                   <h2 className="text-2xl font-extrabold text-blue-900">
                     {article.law_name} 第{article.article_number}条
@@ -104,16 +174,13 @@ function App() {
                 </div>
                 
                 <div className="p-6">
-                  {/* 条文本文 */}
                   <div className="mb-8">
                     <p className="text-slate-700 leading-relaxed font-medium text-lg border-l-4 border-blue-400 pl-4">
                       {article.text}
                     </p>
                   </div>
                   
-                  {/* AI解析ブロック */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    {/* 趣旨 */}
                     {article.purpose && (
                       <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 md:col-span-2">
                         <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
@@ -123,7 +190,6 @@ function App() {
                       </div>
                     )}
 
-                    {/* 要件 */}
                     {requirements.length > 0 && (
                       <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
                         <h3 className="font-bold text-emerald-800 mb-2 flex items-center gap-2">
@@ -135,7 +201,6 @@ function App() {
                       </div>
                     )}
 
-                    {/* 効果 */}
                     {effects.length > 0 && (
                       <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100">
                         <h3 className="font-bold text-orange-800 mb-2 flex items-center gap-2">
@@ -148,7 +213,6 @@ function App() {
                     )}
                   </div>
 
-                  {/* 主要論点 */}
                   {mainIssues.length > 0 && (
                     <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100 mb-6">
                       <h3 className="font-bold text-purple-800 mb-2 flex items-center gap-2">
@@ -160,15 +224,20 @@ function App() {
                     </div>
                   )}
 
-                  {/* 音声プレイヤー */}
+                  {/* ★変更: 共通の再生ボタンに切り替え */}
                   {article.audio_file_path && (
-                    <div className="mt-6 pt-5 border-t border-slate-100">
-                      <h3 className="font-bold text-slate-600 text-sm mb-3">🎧 音声解説を聴く</h3>
-                      {/* ★変更: srcをローカルの変換関数に通す */}
-                      <audio controls className="w-full h-12 outline-none rounded-full bg-slate-50">
-                        <source src={getLocalAudioPath(article.audio_file_path)} type="audio/mpeg" />
-                        お使いのブラウザは音声再生に対応していません。
-                      </audio>
+                    <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between">
+                      <h3 className="font-bold text-slate-600 text-sm">🎧 音声解説を聴く</h3>
+                      <button
+                        onClick={() => togglePlay(article)}
+                        className={`px-6 py-2 rounded-full font-bold text-white transition-colors shadow-sm ${
+                          playingId === article.id 
+                            ? 'bg-orange-500 hover:bg-orange-600' 
+                            : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                      >
+                        {playingId === article.id ? '⏸ 一時停止' : '▶️ 再生する'}
+                      </button>
                     </div>
                   )}
                 </div>
